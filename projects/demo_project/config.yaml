@@ -1,0 +1,3 @@
+samples: samples.csv
+data_dir: data
+results_dir: results

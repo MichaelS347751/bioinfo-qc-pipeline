@@ -1,0 +1,44 @@
+import pandas as pd
+from pathlib import Path
+
+# ---------------------------
+# Select project
+# ---------------------------
+PROJECT = config.get("project", "demo_project")
+
+PROJECT_DIR = Path("projects") / PROJECT
+CONFIG_FILE = PROJECT_DIR / "config.yaml"
+
+# ---------------------------
+# Load project config
+# ---------------------------
+configfile: str(CONFIG_FILE)
+
+SAMPLES = pd.read_csv(PROJECT_DIR / config["samples"])
+
+# ---------------------------
+# Rule: all
+# ---------------------------
+rule all:
+    input:
+        expand(
+            str(PROJECT_DIR / config["results_dir"] / "qc/{sample}.txt"),
+            sample=SAMPLES["sample"]
+        )
+
+# ---------------------------
+# Rule: QC placeholder
+# ---------------------------
+rule qc:
+    input:
+        lambda wc: str(
+            PROJECT_DIR /
+            SAMPLES.loc[SAMPLES["sample"] == wc.sample, "file1"].values[0]
+        )
+    output:
+        str(PROJECT_DIR / config["results_dir"] / "qc/{sample}.txt")
+    shell:
+        """
+        echo QC for {wildcards.sample} > {output}
+        echo Input: {input} >> {output}
+        """

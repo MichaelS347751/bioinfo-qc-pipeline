@@ -1,0 +1,4 @@
+sample,organism,file1,file2
+S1,unknown,data/SRR1770413_1.fastq.gz,data/SRR1770413_2.fastq.gz
+S2,unknown,data/SRR1039508_1.fastq.gz,
+S3,unknown,data/ERR458493.fastq.gz,

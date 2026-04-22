@@ -1,0 +1,5 @@
+notes.txt
+.snakemake/
+projects/*/data/
+*.log
+*.tmp
