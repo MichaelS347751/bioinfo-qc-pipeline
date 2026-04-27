@@ -1,44 +1,90 @@
 import pandas as pd
-from pathlib import Path
+import os
 
-# ---------------------------
-# Select project
-# ---------------------------
-PROJECT = config.get("project", "demo_project")
+configfile: "projects/demo_project/config.yaml"
 
-PROJECT_DIR = Path("projects") / PROJECT
-CONFIG_FILE = PROJECT_DIR / "config.yaml"
+PROJECT = config["project"]
 
-# ---------------------------
-# Load project config
-# ---------------------------
-configfile: str(CONFIG_FILE)
+BASE_DIR = os.getcwd()
 
-SAMPLES = pd.read_csv(PROJECT_DIR / config["samples"])
+DATA_DIR = os.path.abspath(f"projects/{PROJECT}/data")
+RESULTS_DIR = os.path.abspath(f"projects/{PROJECT}/results/qc")
+FASTQC = config["tools"]["fastqc"]
 
-# ---------------------------
-# Rule: all
-# ---------------------------
+SAMPLES = pd.read_csv(f"projects/{PROJECT}/{config['samples']}")
+SAMPLE_MAP = SAMPLES.set_index("sample").to_dict("index")
+
+PAIRED_SAMPLES = SAMPLES[SAMPLES["file2"].notna()]["sample"].tolist()
+SINGLE_SAMPLES = SAMPLES[SAMPLES["file2"].isna()]["sample"].tolist()
+
+wildcard_constraints:
+    sample="[^/]+(?<!_[12])"
+
 rule all:
     input:
-        expand(
-            str(PROJECT_DIR / config["results_dir"] / "qc/{sample}.txt"),
-            sample=SAMPLES["sample"]
-        )
+        expand(f"{RESULTS_DIR}/paired/{{sample}}_1_fastqc.html", sample=PAIRED_SAMPLES),
+        expand(f"{RESULTS_DIR}/paired/{{sample}}_2_fastqc.html", sample=PAIRED_SAMPLES),
+        expand(f"{RESULTS_DIR}/single/{{sample}}_fastqc.html", sample=SINGLE_SAMPLES)
 
-# ---------------------------
-# Rule: QC placeholder
-# ---------------------------
-rule qc:
+rule fastqc_single:
     input:
-        lambda wc: str(
-            PROJECT_DIR /
-            SAMPLES.loc[SAMPLES["sample"] == wc.sample, "file1"].values[0]
-        )
+        lambda wc: os.path.abspath(f"{DATA_DIR}/{SAMPLE_MAP[wc.sample]['file1']}")
     output:
-        str(PROJECT_DIR / config["results_dir"] / "qc/{sample}.txt")
+        html=f"{DATA_DIR}/{{sample}}_fastqc.html",
+        zip=f"{DATA_DIR}/{{sample}}_fastqc.zip"
     shell:
+        r"""
+        call "{FASTQC}" "{input}"
         """
-        echo QC for {wildcards.sample} > {output}
-        echo Input: {input} >> {output}
+
+rule move_fastqc_single:
+    input:
+        html=f"{DATA_DIR}/{{sample}}_fastqc.html",
+        zip=f"{DATA_DIR}/{{sample}}_fastqc.zip"
+    output:
+        html=f"{RESULTS_DIR}/single/{{sample}}_fastqc.html",
+        zip=f"{RESULTS_DIR}/single/{{sample}}_fastqc.zip"
+    run:
+        import os
+        import shutil
+
+        os.makedirs(os.path.dirname(output.html), exist_ok=True)
+
+        shutil.move(input.html, output.html)
+        shutil.move(input.zip, output.zip)
+
+rule fastqc_paired:
+    input:
+        r1=lambda wc: os.path.abspath(f"{DATA_DIR}/{SAMPLE_MAP[wc.sample]['file1']}"),
+        r2=lambda wc: os.path.abspath(f"{DATA_DIR}/{SAMPLE_MAP[wc.sample]['file2']}")
+    output:
+        r1_html=f"{DATA_DIR}/{{sample}}_1_fastqc.html",
+        r1_zip=f"{DATA_DIR}/{{sample}}_1_fastqc.zip",
+        r2_html=f"{DATA_DIR}/{{sample}}_2_fastqc.html",
+        r2_zip=f"{DATA_DIR}/{{sample}}_2_fastqc.zip"
+    shell:
+        r"""
+        call "{FASTQC}" "{input.r1}" "{input.r2}"
         """
+
+rule move_fastqc_paired:
+    input:
+        r1_html=f"{DATA_DIR}/{{sample}}_1_fastqc.html",
+        r1_zip=f"{DATA_DIR}/{{sample}}_1_fastqc.zip",
+        r2_html=f"{DATA_DIR}/{{sample}}_2_fastqc.html",
+        r2_zip=f"{DATA_DIR}/{{sample}}_2_fastqc.zip"
+    output:
+        r1_html=f"{RESULTS_DIR}/paired/{{sample}}_1_fastqc.html",
+        r1_zip=f"{RESULTS_DIR}/paired/{{sample}}_1_fastqc.zip",
+        r2_html=f"{RESULTS_DIR}/paired/{{sample}}_2_fastqc.html",
+        r2_zip=f"{RESULTS_DIR}/paired/{{sample}}_2_fastqc.zip"
+    run:
+        import os
+        import shutil
+
+        os.makedirs(os.path.dirname(output.r1_html), exist_ok=True)
+
+        shutil.move(input.r1_html, output.r1_html)
+        shutil.move(input.r1_zip, output.r1_zip)
+        shutil.move(input.r2_html, output.r2_html)
+        shutil.move(input.r2_zip, output.r2_zip)

@@ -1,3 +1,4 @@
 samples: samples.csv
-data_dir: data
-results_dir: results
+tools:
+  fastqc: "E:/Python/CustomTools/FastQC/run_fastqc.bat"
+project: demo_project

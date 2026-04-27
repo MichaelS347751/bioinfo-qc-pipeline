@@ -1,48 +1,34 @@
 from pathlib import Path
 import csv
 
-data_folder = Path("data")
-
-fastq_files = list(data_folder.rglob("*.fastq.gz"))
+data_folder = Path("projects/demo_project/data")
+output_file = Path("projects/demo_project/samples.csv")
 
 samples = {}
 
-# ---------------------------
-# Group files by sample
-# ---------------------------
-for f in fastq_files:
-    organism = f.parts[-2]            # selects the 2nd last part of the path which is the organism foldername
-    sample_id = f.name.split("_")[0]  # takes the samplename without fwd (_1) or rev (_2) identifier 
+for f in sorted(data_folder.glob("*.fastq.gz")):
+    name = f.name
 
-    if sample_id not in samples:
-        samples[sample_id] = {
-            "organism": organism,
-            "read1": "",
-            "read2": ""
-        }
+    if name.endswith("_1.fastq.gz"):
+        sample = name.replace("_1.fastq.gz", "")
+        samples.setdefault(sample, {"file1": "", "file2": ""})
+        samples[sample]["file1"] = name
 
-    if "_1" in f.name:
-        samples[sample_id]["read1"] = str(f)
-    elif "_2" in f.name:
-        samples[sample_id]["read2"] = str(f)
+    elif name.endswith("_2.fastq.gz"):
+        sample = name.replace("_2.fastq.gz", "")
+        samples.setdefault(sample, {"file1": "", "file2": ""})
+        samples[sample]["file2"] = name
+
     else:
-        samples[sample_id]["read1"] = str(f)
+        sample = name.replace(".fastq.gz", "")
+        samples.setdefault(sample, {"file1": "", "file2": ""})
+        samples[sample]["file1"] = name
 
-# ---------------------------
-# Write CSV
-# ---------------------------
-output_file = Path("samples.csv")
+with open(output_file, "w", newline="") as fh:
+    writer = csv.writer(fh)
+    writer.writerow(["sample", "file1", "file2"])
 
-with open(output_file, "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["sample", "organism", "read1", "read2"])
-
-    for sample, info in samples.items():
-        writer.writerow([
-            sample,
-            info["organism"],
-            info["read1"],
-            info["read2"]
-        ])
+    for sample, info in sorted(samples.items()):
+        writer.writerow([sample, info["file1"], info["file2"]])
 
 print(f"Samplesheet written to {output_file}")

@@ -1,5 +1,10 @@
 notes.txt
 .snakemake/
 projects/*/data/
+projects/*/results/
+__pycache__/
+*.pyc
 *.log
 *.tmp
+*_fastqc.html
+*_fastqc.zip
