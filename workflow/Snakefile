@@ -14,6 +14,14 @@ LOG_DIR = f"{RESULTS_DIR}/logs"
 FASTQC = config["tools"]["fastqc"]
 MULTIQC = config["tools"]["multiqc"]
 
+# Ensure result and log directories exist before rules run
+for d in [RESULTS_DIR, QC_DIR, LOG_DIR,
+          os.path.join(QC_DIR, "single"),
+          os.path.join(QC_DIR, "paired"),
+          os.path.join(LOG_DIR, "fastqc_single"),
+          os.path.join(LOG_DIR, "fastqc_paired")]:
+    os.makedirs(d, exist_ok=True)
+
 SAMPLES = pd.read_csv(f"projects/{PROJECT}/{config['samples']}")
 SAMPLE_MAP = SAMPLES.set_index("sample").to_dict("index")
 

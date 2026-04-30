@@ -49,7 +49,7 @@ bioinfo-qc-pipeline/
 Install Python packages:
 
 ```powershell
-pip install snakemake pandas
+pip install snakemake pandas multiqc
 ```
 
 ---
@@ -99,9 +99,10 @@ samples: samples.csv
 
 tools:
   fastqc: "C:/Tools/FastQC/run_fastqc.bat"
+  multiqc: "multiqc"
 ```
 
-Use forward slashes in the path.
+Use forward slashes in the path on Windows or escape backslashes.
 
 ---
 
@@ -175,10 +176,12 @@ From the repository root:
 snakemake --cores 1
 ```
 
-For multiple cores:
+For multiple cores, previewing commands and parallelism:
 
 ```powershell
-snakemake --cores 4
+snakemake --cores 4 --printshellcmds
+snakemake -n -p    # dry-run, show what will run
+snakemake --cores 4 --rerun-incomplete    # rerun incomplete/failed jobs
 ```
 
 ---
@@ -195,7 +198,7 @@ Useful for debugging.
 
 ---
 
-## Output
+## Output and Logs
 
 Results are written to:
 
@@ -208,13 +211,24 @@ Structure:
 ```text
 results/qc/
 ├── single/
-└── paired/
+├── paired/
+└── multiqc_report.html
 ```
 
 Each sample produces:
 
-* `*_fastqc.html`
-* `*_fastqc.zip`
+- `*_fastqc.html`
+- `*_fastqc.zip`
+
+Execution logs (stdout/stderr captured) are stored under:
+
+```text
+projects/demo_project/results/logs/
+├── fastqc_single/{sample}.log
+├── fastqc_paired/{sample}.log
+└── multiqc.log
+```
+These logs help with debugging failed runs and reproducing command invocations.
 
 ---
 
@@ -265,13 +279,21 @@ snakemake --cores 4
 
 ---
 
-## Planned Features
+## Current Features & Notes
 
-* MultiQC summary reports
-* adapter trimming
-* alignment
-* logging improvements
-* optional conda environments
+* FastQC integration (single & paired)
+* MultiQC summary report generation (requires `multiqc`)
+* Per-rule logs written to `results/logs/`
+* The pipeline expects FASTQ inputs in `projects/<project>/data/` and writes deterministic outputs into `projects/<project>/results/` so Snakemake can track them reliably.
+
+If your FastQC version doesn't support `-o/--outdir`, the workflow runs FastQC from the target output folder so FastQC writes outputs directly into `results/qc/*`.
+
+Planned future features:
+
+- adapter trimming
+- alignment
+- optional per-rule conda environments
+- benchmarking and cluster support
 
 ---
 
