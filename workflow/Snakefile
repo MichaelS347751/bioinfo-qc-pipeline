@@ -12,6 +12,7 @@ QC_DIR = f"{RESULTS_DIR}/qc"
 LOG_DIR = f"{RESULTS_DIR}/logs"
 
 FASTQC = config["tools"]["fastqc"]
+MULTIQC = config["tools"]["multiqc"]
 
 SAMPLES = pd.read_csv(f"projects/{PROJECT}/{config['samples']}")
 SAMPLE_MAP = SAMPLES.set_index("sample").to_dict("index")
@@ -26,7 +27,8 @@ rule all:
     input:
         expand(f"{QC_DIR}/paired/{{sample}}_1_fastqc.html", sample=PAIRED_SAMPLES),
         expand(f"{QC_DIR}/paired/{{sample}}_2_fastqc.html", sample=PAIRED_SAMPLES),
-        expand(f"{QC_DIR}/single/{{sample}}_fastqc.html", sample=SINGLE_SAMPLES)
+        expand(f"{QC_DIR}/single/{{sample}}_fastqc.html", sample=SINGLE_SAMPLES),
+        f"{QC_DIR}/multiqc_report.html"
 
 rule fastqc_single:
     input:
@@ -85,3 +87,22 @@ rule fastqc_paired:
         shutil.move(temp_r1_zip, output.r1_zip)
         shutil.move(temp_r2_html, output.r2_html)
         shutil.move(temp_r2_zip, output.r2_zip)
+
+
+rule multiqc:
+    input:
+        expand(f"{QC_DIR}/paired/{{sample}}_1_fastqc.zip", sample=PAIRED_SAMPLES),
+        expand(f"{QC_DIR}/paired/{{sample}}_2_fastqc.zip", sample=PAIRED_SAMPLES),
+        expand(f"{QC_DIR}/single/{{sample}}_fastqc.zip", sample=SINGLE_SAMPLES)
+    output:
+        report=f"{QC_DIR}/multiqc_report.html"
+    log:
+        f"{LOG_DIR}/multiqc.log"
+    run:
+        import os
+
+        os.makedirs(os.path.dirname(log[0]), exist_ok=True)
+
+        shell(
+            r'call "{MULTIQC}" "{QC_DIR}" --filename multiqc_report.html --outdir "{QC_DIR}" > "{log}" 2>&1'
+        )

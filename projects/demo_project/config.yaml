@@ -1,4 +1,5 @@
 samples: samples.csv
 tools:
   fastqc: "E:/Python/CustomTools/FastQC/run_fastqc.bat"
+  multiqc: "multiqc"
 project: demo_project
