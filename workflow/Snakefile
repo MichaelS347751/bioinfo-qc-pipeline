@@ -5,10 +5,12 @@ configfile: "projects/demo_project/config.yaml"
 
 PROJECT = config["project"]
 
-BASE_DIR = os.getcwd()
+PROJECT_DIR = os.path.abspath(f"projects/{PROJECT}")
+DATA_DIR = f"{PROJECT_DIR}/data"
+RESULTS_DIR = f"{PROJECT_DIR}/results"
+QC_DIR = f"{RESULTS_DIR}/qc"
+LOG_DIR = f"{RESULTS_DIR}/logs"
 
-DATA_DIR = os.path.abspath(f"projects/{PROJECT}/data")
-RESULTS_DIR = os.path.abspath(f"projects/{PROJECT}/results/qc")
 FASTQC = config["tools"]["fastqc"]
 
 SAMPLES = pd.read_csv(f"projects/{PROJECT}/{config['samples']}")
@@ -22,69 +24,64 @@ wildcard_constraints:
 
 rule all:
     input:
-        expand(f"{RESULTS_DIR}/paired/{{sample}}_1_fastqc.html", sample=PAIRED_SAMPLES),
-        expand(f"{RESULTS_DIR}/paired/{{sample}}_2_fastqc.html", sample=PAIRED_SAMPLES),
-        expand(f"{RESULTS_DIR}/single/{{sample}}_fastqc.html", sample=SINGLE_SAMPLES)
+        expand(f"{QC_DIR}/paired/{{sample}}_1_fastqc.html", sample=PAIRED_SAMPLES),
+        expand(f"{QC_DIR}/paired/{{sample}}_2_fastqc.html", sample=PAIRED_SAMPLES),
+        expand(f"{QC_DIR}/single/{{sample}}_fastqc.html", sample=SINGLE_SAMPLES)
 
 rule fastqc_single:
     input:
         lambda wc: os.path.abspath(f"{DATA_DIR}/{SAMPLE_MAP[wc.sample]['file1']}")
     output:
-        html=f"{DATA_DIR}/{{sample}}_fastqc.html",
-        zip=f"{DATA_DIR}/{{sample}}_fastqc.zip"
-    shell:
-        r"""
-        call "{FASTQC}" "{input}"
-        """
-
-rule move_fastqc_single:
-    input:
-        html=f"{DATA_DIR}/{{sample}}_fastqc.html",
-        zip=f"{DATA_DIR}/{{sample}}_fastqc.zip"
-    output:
-        html=f"{RESULTS_DIR}/single/{{sample}}_fastqc.html",
-        zip=f"{RESULTS_DIR}/single/{{sample}}_fastqc.zip"
+        html=f"{QC_DIR}/single/{{sample}}_fastqc.html",
+        zip=f"{QC_DIR}/single/{{sample}}_fastqc.zip"
+    log:
+        f"{LOG_DIR}/fastqc_single/{{sample}}.log"
     run:
-        import os
         import shutil
+        import os
 
         os.makedirs(os.path.dirname(output.html), exist_ok=True)
+        os.makedirs(os.path.dirname(log[0]), exist_ok=True)
 
-        shutil.move(input.html, output.html)
-        shutil.move(input.zip, output.zip)
+        shell(
+            r'call "{FASTQC}" "{input}" > "{log}" 2>&1'
+        )
+
+        temp_html = os.path.join(DATA_DIR, f"{wildcards.sample}_fastqc.html")
+        temp_zip = os.path.join(DATA_DIR, f"{wildcards.sample}_fastqc.zip")
+
+        shutil.move(temp_html, output.html)
+        shutil.move(temp_zip, output.zip)
+
 
 rule fastqc_paired:
     input:
         r1=lambda wc: os.path.abspath(f"{DATA_DIR}/{SAMPLE_MAP[wc.sample]['file1']}"),
         r2=lambda wc: os.path.abspath(f"{DATA_DIR}/{SAMPLE_MAP[wc.sample]['file2']}")
     output:
-        r1_html=f"{DATA_DIR}/{{sample}}_1_fastqc.html",
-        r1_zip=f"{DATA_DIR}/{{sample}}_1_fastqc.zip",
-        r2_html=f"{DATA_DIR}/{{sample}}_2_fastqc.html",
-        r2_zip=f"{DATA_DIR}/{{sample}}_2_fastqc.zip"
-    shell:
-        r"""
-        call "{FASTQC}" "{input.r1}" "{input.r2}"
-        """
-
-rule move_fastqc_paired:
-    input:
-        r1_html=f"{DATA_DIR}/{{sample}}_1_fastqc.html",
-        r1_zip=f"{DATA_DIR}/{{sample}}_1_fastqc.zip",
-        r2_html=f"{DATA_DIR}/{{sample}}_2_fastqc.html",
-        r2_zip=f"{DATA_DIR}/{{sample}}_2_fastqc.zip"
-    output:
-        r1_html=f"{RESULTS_DIR}/paired/{{sample}}_1_fastqc.html",
-        r1_zip=f"{RESULTS_DIR}/paired/{{sample}}_1_fastqc.zip",
-        r2_html=f"{RESULTS_DIR}/paired/{{sample}}_2_fastqc.html",
-        r2_zip=f"{RESULTS_DIR}/paired/{{sample}}_2_fastqc.zip"
+        r1_html=f"{QC_DIR}/paired/{{sample}}_1_fastqc.html",
+        r1_zip=f"{QC_DIR}/paired/{{sample}}_1_fastqc.zip",
+        r2_html=f"{QC_DIR}/paired/{{sample}}_2_fastqc.html",
+        r2_zip=f"{QC_DIR}/paired/{{sample}}_2_fastqc.zip"
+    log:
+        f"{LOG_DIR}/fastqc_paired/{{sample}}.log"
     run:
-        import os
         import shutil
+        import os
 
         os.makedirs(os.path.dirname(output.r1_html), exist_ok=True)
+        os.makedirs(os.path.dirname(log[0]), exist_ok=True)
 
-        shutil.move(input.r1_html, output.r1_html)
-        shutil.move(input.r1_zip, output.r1_zip)
-        shutil.move(input.r2_html, output.r2_html)
-        shutil.move(input.r2_zip, output.r2_zip)
+        shell(
+            r'call "{FASTQC}" "{input.r1}" "{input.r2}" > "{log}" 2>&1'
+        )
+
+        temp_r1_html = os.path.join(DATA_DIR, f"{wildcards.sample}_1_fastqc.html")
+        temp_r1_zip = os.path.join(DATA_DIR, f"{wildcards.sample}_1_fastqc.zip")
+        temp_r2_html = os.path.join(DATA_DIR, f"{wildcards.sample}_2_fastqc.html")
+        temp_r2_zip = os.path.join(DATA_DIR, f"{wildcards.sample}_2_fastqc.zip")
+
+        shutil.move(temp_r1_html, output.r1_html)
+        shutil.move(temp_r1_zip, output.r1_zip)
+        shutil.move(temp_r2_html, output.r2_html)
+        shutil.move(temp_r2_zip, output.r2_zip)
