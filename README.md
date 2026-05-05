@@ -1,26 +1,38 @@
 # Bioinfo QC Pipeline
 
-A Windows-compatible bioinformatics QC workflow for automated FASTQ quality control using **Snakemake**, **Python**, and **FastQC**.
+A Windows-compatible bioinformatics QC workflow for automated FASTQ quality control using **Snakemake**, **Python**, **FastQC**, and **MultiQC**.
 
 ---
 
 ## Overview
 
-This workflow:
+This workflow provides automated FASTQ quality control with:
 
-* processes single-end and paired-end FASTQ files
-* reads sample metadata from `samples.csv`
-* runs FastQC automatically
-* stores results inside each project folder
-* supports multiple independent projects
-* works natively in Windows PowerShell
+- support for single-end and paired-end data
+- automatic detection of FASTQ files (optional CSV override)
+- robust filename parsing (including `_R1/_R2`, `_1/_2`, and `_trimmed` suffixes)
+- structured QC outputs per project
+- per-rule logging for reproducibility
+- MultiQC aggregation of all QC results
 
-The repository is organized to separate:
+It is designed to be:
+- modular
+- reproducible
+- Windows-compatible (PowerShell)
 
-* workflow code
-* project configuration
-* raw sequencing data
-* QC results
+---
+
+## Pipeline Features (Current)
+
+- ✔ Automatic sample detection OR CSV-based input
+- ✔ Paired-end inference from filenames
+- ✔ Trim-aware filename parsing (`_trimmed`)
+- ✔ Mixed naming validation (prevents R1/R2 mismatches)
+- ✔ FastQC per-sample execution
+- ✔ MultiQC summary report
+- ✔ Structured logging per rule
+- ✔ Project-based organization
+- ✔ Deterministic Snakemake outputs
 
 ---
 
@@ -35,64 +47,76 @@ bioinfo-qc-pipeline/
 ├── projects/
 │   └── demo_project/
 │       ├── config.yaml
-│       ├── samples.csv
-│       ├── data/
-│       └── results/
+       ├── samples.csv
+       ├── data/
+       └── results/
+           ├── qc/
+           └── logs/
 ├── README.md
 └── .gitignore
 ```
+Input Modes
+1. CSV mode (recommended)
 
----
+Provide:
 
-## Install Requirements
+projects/<project>/samples.csv
 
-Install Python packages:
+Required columns:
 
-```powershell
+sample
+file1
+
+Optional:
+
+file2 (legacy support; usually inferred automatically)
+2. Automatic mode (no CSV required)
+
+If samples.csv is missing, the pipeline:
+
+scans data/ directory
+detects FASTQ files automatically
+infers pairing based on naming patterns
+
+Supported formats:
+
+sample.fastq.gz
+sample_1.fastq.gz / sample_2.fastq.gz
+sample_R1.fastq.gz / sample_R2.fastq.gz
+sample_1_trimmed.fastq.gz
+Output Structure
+results/
+├── qc/
+│   ├── single/
+│   ├── paired/
+│   └── multiqc_report.html
+└── logs/
+    ├── fastqc_single/
+    ├── fastqc_paired/
+    └── multiqc.log
+
+Each sample produces:
+
+*_fastqc.html
+*_fastqc.zip
+Install Requirements
 pip install snakemake pandas multiqc
-```
-
----
-
-## Install FastQC on Windows
-
-### 1. Download FastQC
-
-Download FastQC from the official site:
+Install FastQC (Windows)
+1. Download FastQC
 
 https://www.bioinformatics.babraham.ac.uk/projects/fastqc/
 
-Extract it to a permanent folder, for example:
+Extract to:
 
-```text
 C:\Tools\FastQC\
-```
-
----
-
-### 2. Test FastQC manually
-
-Run:
-
-```powershell
-C:\Tools\FastQC\run_fastqc.bat
-```
-
-If installed correctly, FastQC should start.
-
----
-
-### 3. Configure FastQC path
+2. Configure FastQC path
 
 Edit:
 
-```text
 projects/demo_project/config.yaml
-```
 
 Example:
 
-```yaml
 project: demo_project
 
 samples: samples.csv
@@ -100,203 +124,55 @@ samples: samples.csv
 tools:
   fastqc: "C:/Tools/FastQC/run_fastqc.bat"
   multiqc: "multiqc"
-```
+Example Test Data
+Sample	Type	Link
+ERR458493	SE	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR458/ERR458493/ERR458493.fastq.gz
 
-Use forward slashes in the path on Windows or escape backslashes.
+SRR1039508	SE	https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR103/008/SRR1039508/SRR1039508.fastq.gz
 
----
+SRR1770413_1	PE	https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR177/003/SRR1770413/SRR1770413_1.fastq.gz
 
-## Example Test Data
-
-The demo project uses small public FASTQ files from ENA.
-
-| Sample       | Type       | Download                                                                         |
-| ------------ | ---------- | -------------------------------------------------------------------------------- |
-| ERR458493    | Single-end | https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR458/ERR458493/ERR458493.fastq.gz         |
-| SRR1039508   | Single-end | https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR103/008/SRR1039508/SRR1039508.fastq.gz   |
-| SRR1770413_1 | Paired-end | https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR177/003/SRR1770413/SRR1770413_1.fastq.gz |
-| SRR1770413_2 | Paired-end | https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR177/003/SRR1770413/SRR1770413_2.fastq.gz |
-
----
-
-## Download Example Data
-
-Create the data folder:
-
-```powershell
+SRR1770413_2	PE	https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR177/003/SRR1770413/SRR1770413_2.fastq.gz
+Download Example Data
 mkdir projects\demo_project\data
-```
-
-Download the files:
-
-```powershell
 Invoke-WebRequest -Uri "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR458/ERR458493/ERR458493.fastq.gz" -OutFile "projects\demo_project\data\ERR458493.fastq.gz"
-
 Invoke-WebRequest -Uri "https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR103/008/SRR1039508/SRR1039508.fastq.gz" -OutFile "projects\demo_project\data\SRR1039508.fastq.gz"
-
 Invoke-WebRequest -Uri "https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR177/003/SRR1770413/SRR1770413_1.fastq.gz" -OutFile "projects\demo_project\data\SRR1770413_1.fastq.gz"
-
 Invoke-WebRequest -Uri "https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR177/003/SRR1770413/SRR1770413_2.fastq.gz" -OutFile "projects\demo_project\data\SRR1770413_2.fastq.gz"
-```
-
----
-
-## Generate `samples.csv` Automatically
-
-Instead of writing `samples.csv` manually, generate it automatically.
-
-Run:
-
-```powershell
+Generate Sample Sheet
 python scripts/build_samplesheet.py
-```
-
-This creates:
-
-```text
-projects/demo_project/samples.csv
-```
-
-Example:
-
-```csv
-sample,file1,file2
-ERR458493,ERR458493.fastq.gz,
-SRR1039508,SRR1039508.fastq.gz,
-SRR1770413,SRR1770413_1.fastq.gz,SRR1770413_2.fastq.gz
-```
-
----
-
-## Run the Pipeline
-
-From the repository root:
-
-```powershell
-snakemake --cores 1
-```
-
-For multiple cores, previewing commands and parallelism:
-
-```powershell
-snakemake --cores 4 --printshellcmds
-snakemake -n -p    # dry-run, show what will run
-snakemake --cores 4 --rerun-incomplete    # rerun incomplete/failed jobs
-```
-
----
-
-## Preview Without Running
-
-To preview the workflow:
-
-```powershell
-snakemake -n -p
-```
-
-Useful for debugging.
-
----
-
-## Output and Logs
-
-Results are written to:
-
-```text
-projects/demo_project/results/qc/
-```
-
-Structure:
-
-```text
-results/qc/
-├── single/
-├── paired/
-└── multiqc_report.html
-```
-
-Each sample produces:
-
-- `*_fastqc.html`
-- `*_fastqc.zip`
-
-Execution logs (stdout/stderr captured) are stored under:
-
-```text
-projects/demo_project/results/logs/
-├── fastqc_single/{sample}.log
-├── fastqc_paired/{sample}.log
-└── multiqc.log
-```
-These logs help with debugging failed runs and reproducing command invocations.
-
----
-
-## Create a New Project
-
-Create a new project:
-
-```powershell
-mkdir projects\my_project
-mkdir projects\my_project\data
-```
-
-Copy config:
-
-```powershell
-copy projects\demo_project\config.yaml projects\my_project\config.yaml
-```
-
-Add FASTQ files to:
-
-```text
-projects/my_project/data/
-```
-
-Generate sample sheet:
-
-```powershell
-python scripts/build_samplesheet.py
-```
-
-Run:
-
-```powershell
+Run Pipeline
 snakemake --cores 4
-```
 
----
+Dry run:
 
-## Current Features
+snakemake -n -p
 
-* Windows-compatible Snakemake workflow
-* FastQC integration
-* automatic sample sheet generation
-* single-end support
-* paired-end support
-* metadata-driven processing
-* project-based organization
+Debug run:
 
----
+snakemake --cores 4 --printshellcmds
 
-## Current Features & Notes
+Recover incomplete runs:
 
-* FastQC integration (single & paired)
-* MultiQC summary report generation (requires `multiqc`)
-* Per-rule logs written to `results/logs/`
-* The pipeline expects FASTQ inputs in `projects/<project>/data/` and writes deterministic outputs into `projects/<project>/results/` so Snakemake can track them reliably.
+snakemake --cores 4 --rerun-incomplete
+Create New Project
+mkdir projects\my_project\data
+copy projects\demo_project\config.yaml projects\my_project\config.yaml
 
-If your FastQC version doesn't support `-o/--outdir`, the workflow runs FastQC from the target output folder so FastQC writes outputs directly into `results/qc/*`.
+Run:
 
-Planned future features:
-
-- adapter trimming
-- alignment
-- optional per-rule conda environments
-- benchmarking and cluster support
-
----
-
-## License
+snakemake --cores 4
+Key Design Notes
+FastQC is executed without relying on --outdir
+outputs are managed via post-processing and controlled file movement
+filename parsing supports trimming and mixed naming conventions
+sample identity can include suffixes (e.g. _trimmed) to allow parallel QC states
+Planned Features
+adapter trimming integration (fastp)
+alignment module
+modular workflow splitting (qc/, trim/, align/)
+optional conda environments per rule
+benchmarking and scaling improvements
+License
 
 For research and educational use.

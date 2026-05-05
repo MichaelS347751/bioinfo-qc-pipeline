@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import re
 
 configfile: "projects/demo_project/config.yaml"
 
@@ -22,11 +23,188 @@ for d in [RESULTS_DIR, QC_DIR, LOG_DIR,
           os.path.join(LOG_DIR, "fastqc_paired")]:
     os.makedirs(d, exist_ok=True)
 
-SAMPLES = pd.read_csv(f"projects/{PROJECT}/{config['samples']}")
-SAMPLE_MAP = SAMPLES.set_index("sample").to_dict("index")
 
-PAIRED_SAMPLES = SAMPLES[SAMPLES["file2"].notna()]["sample"].tolist()
-SINGLE_SAMPLES = SAMPLES[SAMPLES["file2"].isna()]["sample"].tolist()
+
+import re
+
+def parse_fastq_name(filename):
+    """
+    Extract:
+    - sample base name
+    - read (1 or 2 or None)
+    - suffix (e.g. _trimmed)
+
+    Returns: (sample, read, suffix)
+    """
+
+    pattern = r"""
+        ^(.+?)                # sample name (non-greedy)
+        (?:[_\.](R?)([12]))? # optional read indicator (_1, _R1)
+        (_trimmed)?          # optional suffix
+        \.fastq\.gz$
+    """
+
+    m = re.match(pattern, filename, re.VERBOSE)
+
+    if not m:
+        raise ValueError(f"Unrecognized FASTQ filename format: {filename}")
+
+    sample = m.group(1)
+    read = m.group(2)  # "1" or "2" or None
+    suffix = m.group(3) or ""
+
+    return sample, read, suffix
+
+# -------------------------
+# Function to detect fastq files from data folder
+# -------------------------
+def scan_fastq_files(data_dir):
+    files = [f for f in os.listdir(data_dir) if f.endswith(".fastq.gz")]
+
+    parsed = {}
+
+    for f in files:
+        sample, read, suffix = parse_fastq_name(f)
+
+        key = (sample, suffix)
+
+        if key not in parsed:
+            parsed[key] = {"1": None, "2": None}
+
+        if read == "1":
+            parsed[key]["1"] = f
+        elif read == "2":
+            parsed[key]["2"] = f
+        else:
+            # single-end
+            parsed[key]["1"] = f
+
+    SAMPLE_MAP = {}
+
+    for (sample, suffix), reads in parsed.items():
+        r1 = reads["1"]
+        r2 = reads["2"]
+
+        # Mixed naming check
+        if r1 and r2:
+            # Ensure consistent suffix
+            if suffix not in r1 or suffix not in r2:
+                raise ValueError(f"Inconsistent suffix usage for sample {sample}")
+
+        # Paired-end
+        if r1 and r2:
+            SAMPLE_MAP[sample + suffix] = {
+                "file1": r1,
+                "file2": r2
+            }
+
+        # Broken pair
+        elif r1 and not r2 and re.search(r"(_1|_R1)", r1):
+            raise FileNotFoundError(f"Missing pair for {r1}")
+
+        # Single-end
+        else:
+            SAMPLE_MAP[sample + suffix] = {
+                "file1": r1,
+                "file2": None
+            }
+
+    return SAMPLE_MAP
+
+
+# -------------------------
+# Sample detection (CSV or AUTO)
+# -------------------------
+
+SAMPLE_MAP = {}
+
+if os.path.exists(SAMPLES_CSV):
+    print("Using samples.csv")
+
+    SAMPLES = pd.read_csv(SAMPLES_CSV)
+
+    # -------------------------
+    # Validation
+    # -------------------------
+    required_cols = ["sample", "file1"]
+
+    missing = [c for c in required_cols if c not in SAMPLES.columns]
+    if missing:
+        raise ValueError(f"Missing required columns in samples.csv: {missing}")
+
+    if SAMPLES["sample"].duplicated().any():
+        raise ValueError("Duplicate sample names detected in samples.csv")
+
+    if SAMPLES["sample"].str.contains(r"\s").any():
+        raise ValueError("Sample names must not contain spaces")
+
+    # -------------------------
+    # Build SAMPLE_MAP from CSV
+    # -------------------------
+    for _, row in SAMPLES.iterrows():
+        sample = row["sample"]
+        file1 = row["file1"]
+
+        _, read, suffix = parse_fastq_name(file1)
+
+        sample_key = sample + suffix
+
+        if read == "2":
+            raise ValueError(f"{file1} looks like read2 but listed as file1")
+
+        f1_path = os.path.join(DATA_DIR, file1)
+        if not os.path.exists(f1_path):
+            raise FileNotFoundError(f"Missing file: {f1_path}")
+
+        if read == "1":
+            expected_r2 = file1.replace("_1", "_2").replace("_R1", "_R2")
+
+            f2_path = os.path.join(DATA_DIR, expected_r2)
+            if not os.path.exists(f2_path):
+                raise FileNotFoundError(
+                    f"Paired file not found for {sample}: expected {expected_r2}"
+                )
+
+            SAMPLE_MAP[sample_key] = {
+                "file1": file1,
+                "file2": expected_r2
+            }
+
+        else:
+            SAMPLE_MAP[sample_key] = {
+                "file1": file1,
+                "file2": None
+            }
+
+else:
+    print("No samples.csv found → scanning data directory")
+
+    SAMPLE_MAP = scan_fastq_files(DATA_DIR)
+
+# -------------------------
+# Final validation
+# -------------------------
+
+if not SAMPLE_MAP:
+    raise ValueError(f"No FASTQ files found in {DATA_DIR}")
+
+if len(SAMPLE_MAP) != len(set(SAMPLE_MAP.keys())):
+    raise ValueError("Duplicate sample names after parsing")
+
+
+# -------------------------
+# Derive sample groups
+# -------------------------
+
+PAIRED_SAMPLES = [s for s, v in SAMPLE_MAP.items() if v["file2"]]
+SINGLE_SAMPLES = [s for s, v in SAMPLE_MAP.items() if not v["file2"]]
+
+print("Detected samples:")
+for s, v in SAMPLE_MAP.items():
+    print(s, v)
+
+
+
 
 wildcard_constraints:
     sample="[^/]+(?<!_[12])"
